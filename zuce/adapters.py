@@ -95,10 +95,10 @@ class GenericInspectionAdapter(ModelAdapter):
 
 
 class GatedMLPAdapter(ModelAdapter):
-    """Physical slicing for Qwen2, Llama, Mistral, and Gemma model types."""
+    """Physical slicing for dense gated-MLP decoder model types."""
 
     name = "gated-mlp-v1"
-    model_types = ("qwen2", "llama", "mistral", "gemma")
+    model_types = ("qwen2", "qwen3", "llama", "mistral", "gemma")
     supports_surgery = True
 
     def get_layers(self, model: nn.Module) -> nn.ModuleList:

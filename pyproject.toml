@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
   "torch>=2.1",
-  "transformers>=4.45",
+  "transformers>=4.51",
   "safetensors>=0.4",
   "PyYAML>=6.0",
 ]
@@ -24,4 +24,3 @@ zuce = "zuce.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["zuce*", "cap_extract*"]
-

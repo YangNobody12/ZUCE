@@ -4,7 +4,7 @@
 
 ภาษาไทยง่าย ๆ: **สกัดเฉพาะความสามารถที่ต้องการจากโมเดลใหญ่ เพื่อให้รันบน GPU ที่เล็กลงได้ โดยไม่ต้องฝึกโมเดลใหม่**
 
-ZUCE เลือก MLP neurons จาก target/contrast datasets, จำกัดโมเดลปลายทางด้วยจำนวน parameters และพิสูจน์ว่า weights ของ teacher ไม่เปลี่ยนแม้แต่ค่าเดียว ปัจจุบัน physical extraction รองรับ dense gated-MLP ของ Qwen2/Qwen2.5, Llama, Mistral และ Gemma ส่วน Hugging Face CausalLM อื่นสามารถตรวจ compatibility และทำ profiling เมื่อมี safe endpoint ได้ แต่จะหยุดก่อน surgery หากไม่มี adapter ที่รับรอง
+ZUCE เลือก MLP neurons จาก target/contrast datasets, จำกัดโมเดลปลายทางด้วยจำนวน parameters และพิสูจน์ว่า weights ของ teacher ไม่เปลี่ยนแม้แต่ค่าเดียว ปัจจุบัน physical extraction รองรับ dense gated-MLP ของ Qwen2/Qwen2.5/Qwen3, Llama, Mistral และ Gemma ส่วน Hugging Face CausalLM อื่นสามารถตรวจ compatibility และทำ profiling เมื่อมี safe endpoint ได้ แต่จะหยุดก่อน surgery หากไม่มี adapter ที่รับรอง
 
 ## Install and use
 

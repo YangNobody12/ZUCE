@@ -16,6 +16,8 @@ from transformers import (
     MistralForCausalLM,
     Qwen2Config,
     Qwen2ForCausalLM,
+    Qwen3Config,
+    Qwen3ForCausalLM,
 )
 
 from zuce import (
@@ -72,13 +74,14 @@ def tiny_models():
     )
     return [
         Qwen2ForCausalLM(Qwen2Config(**common)),
+        Qwen3ForCausalLM(Qwen3Config(**common)),
         LlamaForCausalLM(LlamaConfig(**common)),
         MistralForCausalLM(MistralConfig(**common)),
         GemmaForCausalLM(GemmaConfig(**common, head_dim=4)),
     ]
 
 
-@pytest.mark.parametrize("model", tiny_models(), ids=["qwen2", "llama", "mistral", "gemma"])
+@pytest.mark.parametrize("model", tiny_models(), ids=["qwen2", "qwen3", "llama", "mistral", "gemma"])
 def test_gated_adapter_slices_exact_subsets(model):
     model.eval()
     adapter = adapter_for(model)
