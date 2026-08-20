@@ -1,0 +1,27 @@
+# Target Domain: Coding Capability Configuration
+capability:
+  target_domain: "coding"
+  contrast_domains:
+    - "math"
+    - "general"
+  
+  # Profiling hyperparameters
+  layer_alphas: [1.0, 0.8, 0.6, 0.4, 0.2, 0.0]
+  num_profiling_samples: 16
+  batch_size: 2
+  
+  # Circuit Discovery hyperparameters
+  lambda_correlation: 0.4
+  lambda_gradient: 0.3
+  lambda_causal_interaction: 0.3
+  community_resolution: 1.0
+  
+  # Soft Mask Optimization
+  soft_mask_lr: 0.01
+  soft_mask_epochs: 10
+  l1_lambda: 0.005
+  binary_threshold: 0.5
+  
+  # Scientific Validation Gate Constraints
+  min_retention_ratio: 0.60 # Stop if R_code < 0.60
+  necessity_threshold_p_value: 0.05

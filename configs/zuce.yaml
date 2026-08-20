@@ -1,0 +1,20 @@
+# ZUCE v0.1 example. Replace max_parameters with a feasible budget for your model.
+model: Qwen/Qwen2.5-1.5B
+output_dir: ./outputs/zuce-coding
+device: auto
+dtype: auto
+trust_remote_code: false
+max_samples: 32
+max_length: 512
+min_retention: 0.60
+seed: 42
+
+capability:
+  name: coding
+  target: preset:coding
+  contrasts:
+    math: preset:math
+    translation: preset:translation
+
+budget:
+  max_parameters: 1000000000

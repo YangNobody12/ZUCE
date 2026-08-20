@@ -1,0 +1,14 @@
+# Base Model & Global Hardware Configuration
+base_model:
+  name: "Qwen/Qwen2.5-1.5B"
+  torch_dtype: "bfloat16" # bfloat16, float16, float32
+  device: "cuda"
+  max_seq_len: 512
+  vocab_size: 151936
+
+# Output directories
+paths:
+  output_dir: "./outputs"
+  results_dir: "./outputs/scientific_reports"
+  student_model_dir: "./outputs/specialist_student_model"
+  checkpoint_dir: "./outputs/checkpoints"

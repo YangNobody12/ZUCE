@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "zuce"
+version = "0.1.0"
+description = "Zero-Update Capability Extraction for Hugging Face causal language models"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "torch>=2.1",
+  "transformers>=4.45",
+  "safetensors>=0.4",
+  "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+datasets = ["datasets>=2.20"]
+test = ["pytest>=8.0"]
+
+[project.scripts]
+zuce = "zuce.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["zuce*", "cap_extract*"]
+

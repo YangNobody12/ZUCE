@@ -1,0 +1,13 @@
+# Target Budget: 500M Parameters Zero-Update (Δθ = 0) Extraction Configuration
+student_target:
+  target_parameter_budget: 550000000 # 550M maximum
+  target_size_label: "0.5B"
+  strict_zero_update: true # STRICT RULE: No fine-tuning, no distillation, no weight update (Δθ = 0)
+  
+  # Search space boundaries
+  target_layers: 16
+  target_intermediate_size: 2304
+  hidden_size: 2048 # Keep d_model = 2048 unchanged to avoid residual projection drift
+  
+  # Validation Gate thresholds
+  min_retention_ratio: 0.50 # Stop if R_code < 0.50
