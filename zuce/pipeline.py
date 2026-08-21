@@ -223,7 +223,19 @@ def run_extraction(config: ZUCEConfig, tokenizer: Any | None = None) -> Extracti
             **diagnostic,
         )
 
-    student = build_extracted_model(model, adapter, selected, allocation.retained_width)
+    teacher_device = next(model.parameters()).device
+    if teacher_device.type == "cuda":
+        model.to("cpu")
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+    student = build_extracted_model(
+        model,
+        adapter,
+        selected,
+        allocation.retained_width,
+        target_device=teacher_device,
+    )
     subset_proof = verify_exact_subset(model, student, adapter, selected)
     student_metrics = evaluate_nll(student, tokenizer, target_texts, config.max_length)
     retention = retention_from_nll(float(teacher_metrics["nll"]), float(student_metrics["nll"]))

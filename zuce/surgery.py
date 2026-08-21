@@ -32,6 +32,7 @@ def build_extracted_model(
     adapter: ModelAdapter,
     selected: Mapping[int, list[int]],
     retained_width: int,
+    target_device: torch.device | str | None = None,
 ) -> nn.Module:
     """Instantiate the same HF architecture and copy exact source tensor subsets."""
 
@@ -86,11 +87,12 @@ def build_extracted_model(
     if hasattr(student, "tie_weights"):
         student.tie_weights()
     dtype = _first_float_dtype(teacher)
-    try:
-        device = next(teacher.parameters()).device
-    except StopIteration:
-        device = torch.device("cpu")
-    student.to(device=device, dtype=dtype)
+    if target_device is None:
+        try:
+            target_device = next(teacher.parameters()).device
+        except StopIteration:
+            target_device = torch.device("cpu")
+    student.to(device=target_device, dtype=dtype)
     student.eval()
     return student
 
