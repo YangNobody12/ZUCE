@@ -98,8 +98,15 @@ class GatedMLPAdapter(ModelAdapter):
     """Physical slicing for dense gated-MLP decoder model types."""
 
     name = "gated-mlp-v1"
-    model_types = ("qwen2", "qwen3", "llama", "mistral", "gemma")
+    model_types = ("qwen2", "qwen2_5", "qwen3", "qwen3_5", "qwen3_8", "qwen", "llama", "mistral", "gemma")
     supports_surgery = True
+
+    def matches(self, model: nn.Module) -> bool:
+        cfg = getattr(model, "config", None)
+        model_type = str(getattr(cfg, "model_type", "")).lower()
+        if not model_type and hasattr(cfg, "text_config"):
+            model_type = str(getattr(cfg.text_config, "model_type", "")).lower()
+        return any(t in model_type for t in self.model_types)
 
     def get_layers(self, model: nn.Module) -> nn.ModuleList:
         backbone = getattr(model, "model", None)
@@ -124,9 +131,27 @@ class GatedMLPAdapter(ModelAdapter):
     def get_profile_module(self, layer: nn.Module) -> nn.Module:
         return self.mlp_parts(layer).down
 
+    def intermediate_size(self, model: nn.Module) -> int | None:
+        cfg = getattr(model, "config", None)
+        if cfg is not None:
+            for name in ("intermediate_size", "intermediate_dim", "ffn_dim"):
+                val = getattr(cfg, name, None)
+                if val is not None:
+                    return int(val)
+            text_cfg = getattr(cfg, "text_config", None)
+            if text_cfg is not None:
+                for name in ("intermediate_size", "intermediate_dim", "ffn_dim"):
+                    val = getattr(text_cfg, name, None)
+                    if val is not None:
+                        return int(val)
+        return super().intermediate_size(model)
+
     def patch_config(self, config: Any, retained_width: int) -> Any:
         result = copy.deepcopy(config)
-        result.intermediate_size = int(retained_width)
+        if hasattr(result, "intermediate_size"):
+            result.intermediate_size = int(retained_width)
+        if hasattr(result, "text_config") and hasattr(result.text_config, "intermediate_size"):
+            result.text_config.intermediate_size = int(retained_width)
         return result
 
 
