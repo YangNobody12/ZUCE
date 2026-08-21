@@ -256,6 +256,21 @@ model_4bit = AutoModelForCausalLM.from_pretrained(
 )
 
 print(f"โหลดโมเดลสำเร็จ! VRAM ที่ใช้: {torch.cuda.memory_allocated() / (1024**2):.2f} MB")
+
+# -------------------------------------------------------------
+# 💾 การบันทึกโมเดล 4-bit / 8-bit ลงดิสก์ (Save Quantized Model)
+# -------------------------------------------------------------
+QUANT_OUTPUT_DIR = "./outputs/zuce-qwen3-coding-4bit"
+model_4bit.save_pretrained(QUANT_OUTPUT_DIR, safe_serialization=True)
+tokenizer.save_pretrained(QUANT_OUTPUT_DIR)
+
+print(f"บันทึกโมเดล 4-bit ลงดิสก์เรียบร้อย! ขนาดไฟล์บนดิสก์จะลดลงเหลือ ~5-11 GB")
+
+# -------------------------------------------------------------
+# 🚀 การโหลดโมเดล Quantized ที่บันทึกไว้กลับมาใช้งานใหม่
+# -------------------------------------------------------------
+# Hugging Face จะอ่าน `quantization_config` จาก config.json และโหลดเป็น 4-bit อัตโนมัติ:
+reloaded_model = AutoModelForCausalLM.from_pretrained(QUANT_OUTPUT_DIR, device_map="auto")
 ```
 
 ---
