@@ -29,6 +29,22 @@ class ParameterBudget:
         if self.max_parameters <= 0:
             raise ValueError("max_parameters must be a positive integer")
 
+    @classmethod
+    def from_reduction_percent(cls, total_parameters: int, percent: float) -> "ParameterBudget":
+        """Create a budget by specifying the percentage of parameters to prune (e.g. 35 for -35%)."""
+        if not 0 < percent < 100:
+            raise ValueError("percent must be between 0 and 100")
+        target = int(total_parameters * (1.0 - percent / 100.0))
+        return cls(max_parameters=max(1, target))
+
+    @classmethod
+    def from_retention_ratio(cls, total_parameters: int, ratio: float) -> "ParameterBudget":
+        """Create a budget by specifying the ratio of parameters to retain (e.g. 0.65 for 65%)."""
+        if not 0 < ratio <= 1.0:
+            raise ValueError("ratio must be between 0 and 1.0")
+        target = int(total_parameters * ratio)
+        return cls(max_parameters=max(1, target))
+
 
 @dataclass(slots=True)
 class ZUCEConfig:
