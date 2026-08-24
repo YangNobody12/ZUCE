@@ -1,5 +1,6 @@
 """
 Gradio Side-by-Side Arena: Base Model vs ZUCE v4.0 (AMPQ & Fusion)
+Compatible with Gradio 5 & Gradio 6 messages format: [{'role': 'user', ...}, {'role': 'assistant', ...}]
 Run with: python app.py
 """
 
@@ -117,16 +118,23 @@ def chat_side_by_side(user_message, history_base, history_zuce, temperature=0.0,
         resp_base = clean_base + footer_base
         resp_zuce = clean_zuce + footer_zuce
 
-        history_base.append((user_message, resp_base))
-        history_zuce.append((user_message, resp_zuce))
+        # Gradio 5/6 messages format
+        history_base.append({"role": "user", "content": user_message})
+        history_base.append({"role": "assistant", "content": resp_base})
+
+        history_zuce.append({"role": "user", "content": user_message})
+        history_zuce.append({"role": "assistant", "content": resp_zuce})
+
         return "", history_base, history_zuce
 
     except Exception as e:
         err_msg = f"❌ Error: {str(e)}\n\n```python\n{traceback.format_exc()}\n```"
         history_base = history_base or []
         history_zuce = history_zuce or []
-        history_base.append((user_message, err_msg))
-        history_zuce.append((user_message, err_msg))
+        history_base.append({"role": "user", "content": user_message})
+        history_base.append({"role": "assistant", "content": err_msg})
+        history_zuce.append({"role": "user", "content": user_message})
+        history_zuce.append({"role": "assistant", "content": err_msg})
         return "", history_base, history_zuce
 
 def build_gradio_ui():
