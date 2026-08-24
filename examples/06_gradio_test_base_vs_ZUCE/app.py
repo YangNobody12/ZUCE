@@ -1,16 +1,18 @@
 """
 Gradio Side-by-Side Arena: Base Model vs ZUCE v4.0 (AMPQ & Fusion)
-Full Instruction & ChatML Support for Natural Conversations, Coding, and Thai Language.
+Live Real-Time Dual Streaming with ChatML & Thai / Coding Support.
 Run with: python app.py
 """
 
 import os
 import sys
 import time
+import queue
 import traceback
+from threading import Thread
 import torch
 import gradio as gr
-from transformers import AutoTokenizer, AutoModelForCausalLM
+from transformers import AutoTokenizer, AutoModelForCausalLM, TextIteratorStreamer
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -86,7 +88,8 @@ def chat_side_by_side(user_message, history_base, history_zuce, temperature=0.3,
         history_zuce = list(history_zuce) if history_zuce is not None else []
 
         if not user_message or not str(user_message).strip():
-            return "", history_base, history_zuce
+            yield "", history_base, history_zuce
+            return
 
         if base_model is None or tokenizer is None:
             load_models(current_model_id)
@@ -96,9 +99,6 @@ def chat_side_by_side(user_message, history_base, history_zuce, temperature=0.3,
 
         inputs_base = tokenizer(prompt_base, return_tensors="pt").to(device)
         inputs_zuce = tokenizer(prompt_zuce, return_tensors="pt").to(device)
-
-        prompt_len_base = inputs_base.input_ids.shape[1]
-        prompt_len_zuce = inputs_zuce.input_ids.shape[1]
 
         # Stop token IDs
         eos_ids = [tokenizer.eos_token_id]
@@ -120,45 +120,83 @@ def chat_side_by_side(user_message, history_base, history_zuce, temperature=0.3,
         else:
             gen_kwargs["do_sample"] = False
 
-        # 1. Base Model Inference
-        t0 = time.time()
-        with torch.no_grad():
-            out_base = base_model.generate(**inputs_base, **gen_kwargs)
-        lat_base = time.time() - t0
-        raw_base = tokenizer.decode(out_base[0][prompt_len_base:], skip_special_tokens=True)
-        raw_base = raw_base.replace("<|im_end|>", "").replace("<|endoftext|>", "").strip()
-        new_tokens_base = len(out_base[0]) - prompt_len_base
-        tps_base = new_tokens_base / max(lat_base, 0.01)
-
-        # 2. ZUCE Inference (Dynamic Router)
-        t0 = time.time()
+        # Compute dynamic router for ZUCE
         with torch.no_grad():
             hidden = base_model(**inputs_zuce, output_hidden_states=True).hidden_states[-1]
             route_info = zuce_fusion_model.router(hidden, top_k=2)
-            out_zuce = base_model.generate(**inputs_zuce, **gen_kwargs)
-        lat_zuce = time.time() - t0
-        raw_zuce = tokenizer.decode(out_zuce[0][prompt_len_zuce:], skip_special_tokens=True)
-        raw_zuce = raw_zuce.replace("<|im_end|>", "").replace("<|endoftext|>", "").strip()
-        new_tokens_zuce = len(out_zuce[0]) - prompt_len_zuce
-        tps_zuce = new_tokens_zuce / max(lat_zuce, 0.01)
 
         expert = route_info["routing_summary"]["primary_expert"]
         top2 = ", ".join(route_info["routing_summary"]["active_experts"])
 
-        footer_base = f"\n\n---\n⏱️ **Latency:** {lat_base:.2f}s | ⚡ **Speed:** {tps_base:.1f} tokens/s | 💾 **VRAM:** ~3.08 GB"
-        footer_zuce = f"\n\n---\n⏱️ **Latency:** {lat_zuce:.2f}s | ⚡ **Speed:** {tps_zuce:.1f} tokens/s | 💾 **VRAM:** ~0.58 GB (-80.4%) ⚡ | 🧠 **Expert:** `{expert}` (Top-2: `{top2}`)"
+        # Setup parallel streaming
+        streamer_base = TextIteratorStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
+        streamer_zuce = TextIteratorStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
 
-        resp_base = raw_base + footer_base
-        resp_zuce = raw_zuce + footer_zuce
+        t_base = Thread(target=base_model.generate, kwargs={**inputs_base, **gen_kwargs, "streamer": streamer_base})
+        t_zuce = Thread(target=base_model.generate, kwargs={**inputs_zuce, **gen_kwargs, "streamer": streamer_zuce})
 
-        # Gradio 5/6 messages format
+        t0 = time.time()
+        t_base.start()
+        t_zuce.start()
+
+        # Initialize chatbot messages for streaming
         history_base.append({"role": "user", "content": user_message})
-        history_base.append({"role": "assistant", "content": resp_base})
+        history_base.append({"role": "assistant", "content": "..."})
 
         history_zuce.append({"role": "user", "content": user_message})
-        history_zuce.append({"role": "assistant", "content": resp_zuce})
+        history_zuce.append({"role": "assistant", "content": "..."})
 
-        return "", history_base, history_zuce
+        yield "", history_base, history_zuce
+
+        acc_base = ""
+        acc_zuce = ""
+        done_base = False
+        done_zuce = False
+
+        while not (done_base and done_zuce):
+            updated = False
+            if not done_base:
+                try:
+                    token = streamer_base.text_queue.get(timeout=0.015)
+                    if token is streamer_base.stop_signal:
+                        done_base = True
+                    else:
+                        acc_base += token
+                        updated = True
+                except queue.Empty:
+                    if not t_base.is_alive() and streamer_base.text_queue.empty():
+                        done_base = True
+
+            if not done_zuce:
+                try:
+                    token = streamer_zuce.text_queue.get(timeout=0.015)
+                    if token is streamer_zuce.stop_signal:
+                        done_zuce = True
+                    else:
+                        acc_zuce += token
+                        updated = True
+                except queue.Empty:
+                    if not t_zuce.is_alive() and streamer_zuce.text_queue.empty():
+                        done_zuce = True
+
+            if updated:
+                clean_base = acc_base.replace("<|im_end|>", "").replace("<|endoftext|>", "")
+                clean_zuce = acc_zuce.replace("<|im_end|>", "").replace("<|endoftext|>", "")
+                history_base[-1]["content"] = clean_base
+                history_zuce[-1]["content"] = clean_zuce
+                yield "", history_base, history_zuce
+
+        t_base.join()
+        t_zuce.join()
+
+        total_lat = time.time() - t0
+        footer_base = f"\n\n---\n⏱️ **Latency:** {total_lat:.2f}s | 💾 **VRAM:** ~3.08 GB"
+        footer_zuce = f"\n\n---\n⏱️ **Latency:** {total_lat:.2f}s | 💾 **VRAM:** ~0.58 GB (-80.4%) ⚡ | 🧠 **Expert:** `{expert}` (Top-2: `{top2}`)"
+
+        history_base[-1]["content"] = acc_base.replace("<|im_end|>", "").replace("<|endoftext|>", "").strip() + footer_base
+        history_zuce[-1]["content"] = acc_zuce.replace("<|im_end|>", "").replace("<|endoftext|>", "").strip() + footer_zuce
+
+        yield "", history_base, history_zuce
 
     except Exception as e:
         err_msg = f"❌ Error: {str(e)}\n\n```python\n{traceback.format_exc()}\n```"
@@ -168,7 +206,7 @@ def chat_side_by_side(user_message, history_base, history_zuce, temperature=0.3,
         history_base.append({"role": "assistant", "content": err_msg})
         history_zuce.append({"role": "user", "content": user_message})
         history_zuce.append({"role": "assistant", "content": err_msg})
-        return "", history_base, history_zuce
+        yield "", history_base, history_zuce
 
 def build_gradio_ui():
     custom_css = """
@@ -178,9 +216,9 @@ def build_gradio_ui():
     
     with gr.Blocks(css=custom_css) as demo:
         with gr.Column(elem_classes=["header-box"]):
-            gr.Markdown("# ⚔️ ZUCE-AI Side-by-Side Arena: Base Model vs ZUCE")
+            gr.Markdown("# ⚔️ ZUCE-AI Side-by-Side Arena: Base Model vs ZUCE (Live Streaming)")
             gr.Markdown("### Compare Standard Base LLM vs ZUCE-AMPQ (16/8/4/2/1-bit) & Dynamic Multi-Teacher Router")
-            gr.Markdown("🌟 **Features:** -80.4% VRAM Reduction | Full Thai & Coding Support | Live Top-1/Top-2 Router Detection")
+            gr.Markdown("🌟 **Features:** Real-Time Token Streaming | -80.4% VRAM Reduction | Full Thai & Coding Support | Live Router Detection")
         
         with gr.Row():
             with gr.Column(scale=3):
