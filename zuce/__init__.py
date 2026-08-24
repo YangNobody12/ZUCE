@@ -10,7 +10,18 @@ from .errors import (
     VerificationError,
     ZUCEError,
 )
-from .types import CapabilitySpec, CompatibilityReport, ExtractionResult, ParameterBudget, ZUCEConfig
+from .types import (
+    AMPQConfig,
+    AMPQResult,
+    CapabilitySpec,
+    CompatibilityReport,
+    ExamResult,
+    ExtractionResult,
+    FusionConfig,
+    FusionResult,
+    ParameterBudget,
+    ZUCEConfig,
+)
 
 __all__ = [
     "ZUCE",
@@ -19,6 +30,11 @@ __all__ = [
     "ParameterBudget",
     "CompatibilityReport",
     "ExtractionResult",
+    "AMPQConfig",
+    "AMPQResult",
+    "FusionConfig",
+    "FusionResult",
+    "ExamResult",
     "ModelAdapter",
     "ZUCEError",
     "UnsupportedArchitectureError",
@@ -28,4 +44,4 @@ __all__ = [
     "VerificationError",
 ]
 
-__version__ = "0.1.0"
+__version__ = "4.0.0"

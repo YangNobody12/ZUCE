@@ -139,3 +139,75 @@ class ExtractionResult:
         data = asdict(self)
         data["compatibility"] = self.compatibility.to_dict()
         return data
+
+
+@dataclass(slots=True)
+class AMPQConfig:
+    """Configuration for ZUCE Adaptive Mixed-Precision Quantization."""
+    group_size: int = 128
+    error_limit: float = 0.20
+    target_reduction: float = 0.75
+    device: str = "auto"
+    dtype: str = "auto"
+
+
+@dataclass(slots=True)
+class AMPQResult:
+    """Results from ZUCE Adaptive Mixed-Precision Quantization."""
+    total_parameters: int
+    average_bits_per_weight: float
+    compression_ratio: float
+    vram_reduction_pct: float
+    precision_distribution: dict[str, float]
+    quantized_model: Any = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "total_parameters": self.total_parameters,
+            "average_bits_per_weight": self.average_bits_per_weight,
+            "compression_ratio": self.compression_ratio,
+            "vram_reduction_pct": self.vram_reduction_pct,
+            "precision_distribution": self.precision_distribution,
+        }
+
+
+@dataclass(slots=True)
+class FusionConfig:
+    """Configuration for Multi-Teacher ZUCE-Fusion."""
+    adapter_rank: int = 128
+    top_k: int = 2
+    active_teachers: list[str] = field(
+        default_factory=lambda: ["coding", "reasoning", "thai", "general"]
+    )
+    device: str = "auto"
+
+
+@dataclass(slots=True)
+class FusionResult:
+    """Results from ZUCE-Fusion Integration."""
+    fused_model: Any
+    router_accuracy_pct: float
+    vram_savings_pct: float
+    adapter_metadata: dict[str, Any]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "router_accuracy_pct": self.router_accuracy_pct,
+            "vram_savings_pct": self.vram_savings_pct,
+            "adapter_metadata": self.adapter_metadata,
+        }
+
+
+@dataclass(slots=True)
+class ExamResult:
+    """Results from the Real Algorithmic Exam."""
+    total_problems: int
+    passed_problems: int
+    functional_pass_rate_pct: float
+    total_cases_run: int
+    cases_passed: int
+    average_latency_sec: float
+    problem_details: list[dict[str, Any]] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
