@@ -1,6 +1,6 @@
 """
 Gradio Side-by-Side Arena: Base Model vs ZUCE v4.0 (AMPQ & Fusion)
-Live Real-Time Dual Streaming with ChatML & Thai / Coding Support.
+Live Real-Time Dual Streaming with Multi-Turn Memory & Robust History Parser.
 Run with: python app.py
 """
 
@@ -54,31 +54,70 @@ def load_models(model_id):
     status_msg = f"✅ Loaded **{model_id}**!\n- **Base VRAM (FP16):** {base_vram:.1f} MB ({base_vram/1024:.2f} GB)\n- **ZUCE-AMPQ VRAM:** {zuce_vram:.1f} MB ({zuce_vram/1024:.2f} GB) — **-80.4% Memory Savings** ⚡"
     return status_msg
 
+def extract_text(content) -> str:
+    """Robust extractor for any Gradio 4/5/6 history content format (str, list, dict, tuple)."""
+    if isinstance(content, str):
+        return content
+    elif isinstance(content, (list, tuple)):
+        parts = []
+        for p in content:
+            if isinstance(p, str):
+                parts.append(p)
+            elif isinstance(p, dict) and "text" in p:
+                parts.append(str(p["text"]))
+            elif isinstance(p, dict) and "content" in p:
+                parts.append(str(p["content"]))
+            else:
+                parts.append(str(p))
+        return " ".join(parts)
+    elif isinstance(content, dict):
+        if "text" in content:
+            return str(content["text"])
+        elif "content" in content:
+            return str(content["content"])
+        return str(content)
+    return str(content) if content is not None else ""
+
+def clean_history_text(raw_text: str) -> str:
+    """Strips metadata footer from previous turn."""
+    t = extract_text(raw_text)
+    for marker in ["\n\n---\n⏱️", "\n\n---", "\n---\n⏱️", "\n---"]:
+        if marker in t:
+            t = t.split(marker)[0]
+    return t.strip()
+
 def build_chat_prompt(user_text: str, history=None) -> str:
-    """Formats prompt into ChatML / Instruct structure to prevent loops on base models."""
+    """Builds clean ChatML prompt supporting multi-turn conversation memory."""
     system_prompt = "You are a helpful, knowledgeable AI assistant. You can write code, explain concepts in Thai, and answer general questions."
     
+    clean_history = []
+    if history:
+        for item in history:
+            if isinstance(item, dict) and "role" in item:
+                role = str(item["role"])
+                content = clean_history_text(item.get("content", ""))
+                if content:
+                    clean_history.append({"role": role, "content": content})
+            elif isinstance(item, (list, tuple)) and len(item) == 2:
+                u_text = clean_history_text(item[0])
+                a_text = clean_history_text(item[1])
+                if u_text:
+                    clean_history.append({"role": "user", "content": u_text})
+                if a_text:
+                    clean_history.append({"role": "assistant", "content": a_text})
+
+    user_clean = extract_text(user_text).strip()
+
     if hasattr(tokenizer, "apply_chat_template") and tokenizer.chat_template:
         messages = [{"role": "system", "content": system_prompt}]
-        if history:
-            for item in history:
-                if isinstance(item, dict) and "role" in item and "content" in item:
-                    messages.append({"role": item["role"], "content": item["content"].split("\n\n---\n⏱️")[0]})
-                elif isinstance(item, (list, tuple)) and len(item) == 2:
-                    messages.append({"role": "user", "content": str(item[0])})
-                    messages.append({"role": "assistant", "content": str(item[1]).split("\n\n---\n⏱️")[0]})
-        messages.append({"role": "user", "content": str(user_text).strip()})
+        messages.extend(clean_history)
+        messages.append({"role": "user", "content": user_clean})
         return tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
     else:
         prompt = f"<|im_start|>system\n{system_prompt}<|im_end|>\n"
-        if history:
-            for item in history:
-                if isinstance(item, dict) and "role" in item and "content" in item:
-                    clean_content = item["content"].split("\n\n---\n⏱️")[0]
-                    prompt += f"<|im_start|>{item['role']}\n{clean_content}<|im_end|>\n"
-                elif isinstance(item, (list, tuple)) and len(item) == 2:
-                    prompt += f"<|im_start|>user\n{item[0]}<|im_end|>\n<|im_start|>assistant\n{str(item[1]).split(chr(10)+chr(10)+'---'+chr(10))[0]}<|im_end|>\n"
-        prompt += f"<|im_start|>user\n{str(user_text).strip()}<|im_end|>\n<|im_start|>assistant\n"
+        for msg in clean_history:
+            prompt += f"<|im_start|>{msg['role']}\n{msg['content']}<|im_end|>\n"
+        prompt += f"<|im_start|>user\n{user_clean}<|im_end|>\n<|im_start|>assistant\n"
         return prompt
 
 def chat_side_by_side(user_message, history_base, history_zuce, temperature=0.3, max_tokens=384, top_p=0.9, repetition_penalty=1.1):
@@ -140,10 +179,10 @@ def chat_side_by_side(user_message, history_base, history_zuce, temperature=0.3,
         t_zuce.start()
 
         # Initialize chatbot messages for streaming
-        history_base.append({"role": "user", "content": user_message})
+        history_base.append({"role": "user", "content": str(user_message)})
         history_base.append({"role": "assistant", "content": "..."})
 
-        history_zuce.append({"role": "user", "content": user_message})
+        history_zuce.append({"role": "user", "content": str(user_message)})
         history_zuce.append({"role": "assistant", "content": "..."})
 
         yield "", history_base, history_zuce
@@ -202,9 +241,9 @@ def chat_side_by_side(user_message, history_base, history_zuce, temperature=0.3,
         err_msg = f"❌ Error: {str(e)}\n\n```python\n{traceback.format_exc()}\n```"
         history_base = history_base or []
         history_zuce = history_zuce or []
-        history_base.append({"role": "user", "content": user_message})
+        history_base.append({"role": "user", "content": str(user_message)})
         history_base.append({"role": "assistant", "content": err_msg})
-        history_zuce.append({"role": "user", "content": user_message})
+        history_zuce.append({"role": "user", "content": str(user_message)})
         history_zuce.append({"role": "assistant", "content": err_msg})
         yield "", history_base, history_zuce
 
@@ -218,7 +257,7 @@ def build_gradio_ui():
         with gr.Column(elem_classes=["header-box"]):
             gr.Markdown("# ⚔️ ZUCE-AI Side-by-Side Arena: Base Model vs ZUCE (Live Streaming)")
             gr.Markdown("### Compare Standard Base LLM vs ZUCE-AMPQ (16/8/4/2/1-bit) & Dynamic Multi-Teacher Router")
-            gr.Markdown("🌟 **Features:** Real-Time Token Streaming | -80.4% VRAM Reduction | Full Thai & Coding Support | Live Router Detection")
+            gr.Markdown("🌟 **Features:** Real-Time Token Streaming | Multi-Turn Memory | -80.4% VRAM Reduction | Live Router Detection")
         
         with gr.Row():
             with gr.Column(scale=3):
@@ -251,7 +290,7 @@ def build_gradio_ui():
         
         with gr.Row():
             msg_input = gr.Textbox(
-                placeholder="พิมพ์คำถาม เช่น 'เขียน web แนะนำตัวเอง', 'Write two_sum in Python', 'อธิบาย Deep Learning'...",
+                placeholder="พิมพ์คำถาม เช่น 'เขียน web แนะนำตัวเอง', 'ต่อเลย', 'Write two_sum in Python'...",
                 label="💬 Your Prompt / Question",
                 scale=4
             )
@@ -267,6 +306,7 @@ def build_gradio_ui():
         gr.Examples(
             examples=[
                 ["เขียน web แนะนำตัวเอง"],
+                ["ต่อเลย"],
                 ["Write a Python function `two_sum(nums, target)` using a hash map in O(n) time."],
                 ["ช่วยอธิบายการทำงานของ Forward Pass และ Backpropagation ใน Deep Learning เป็นภาษาไทย"],
                 ["Write a Python function for Kadane's Maximum Subarray Algorithm with docstring doctests."],
