@@ -6,6 +6,7 @@ Run with: python app.py
 import os
 import sys
 import time
+import traceback
 import torch
 import gradio as gr
 from transformers import AutoTokenizer, AutoModelForCausalLM
@@ -36,7 +37,9 @@ def load_models(model_id):
     current_model_id = model_id
     print(f"Loading {model_id}...")
     tokenizer = AutoTokenizer.from_pretrained(model_id)
-    base_model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=dtype, device_map="auto" if device == "cuda" else None)
+    base_model = AutoModelForCausalLM.from_pretrained(
+        model_id, dtype=dtype, device_map="auto" if device == "cuda" else None
+    )
     base_model.eval()
     
     # Initialize ZUCE Fusion model with Top-2 Dynamic Router
@@ -50,70 +53,81 @@ def load_models(model_id):
     return status_msg
 
 def format_prompt(user_text):
-    if any(k in user_text.lower() for k in ["def ", "python", "function", "write a", "เขียนฟังก์ชัน", "อัลกอริทึม", "leetcode"]):
-        return f"# Python 3 Solution\n# Task: {user_text}\n"
-    return user_text
+    text = str(user_text).strip()
+    if any(k in text.lower() for k in ["def ", "python", "function", "write a", "เขียนฟังก์ชัน", "อัลกอริทึม", "leetcode"]):
+        return f"# Python 3 Solution\n# Task: {text}\n"
+    return text
 
-def chat_side_by_side(user_message, history_base, history_zuce, temperature, max_tokens, top_p):
+def chat_side_by_side(user_message, history_base, history_zuce, temperature=0.0, max_tokens=256, top_p=0.95):
     global tokenizer, base_model, zuce_fusion_model
-    if base_model is None or tokenizer is None:
-        load_models(current_model_id)
-    
-    prompt = format_prompt(user_message)
-    inputs = tokenizer(prompt, return_tensors="pt").to(device)
-    
-    # 1. Generate with Base Model
-    t0 = time.time()
-    with torch.no_grad():
-        outputs_base = base_model.generate(
-            **inputs,
-            max_new_tokens=max_tokens,
-            temperature=max(temperature, 0.01) if temperature > 0 else None,
-            do_sample=temperature > 0,
-            top_p=top_p if temperature > 0 else None,
-            pad_token_id=tokenizer.eos_token_id
-        )
-    latency_base = time.time() - t0
-    raw_base = tokenizer.decode(outputs_base[0][inputs.input_ids.shape[1]:], skip_special_tokens=True)
-    tps_base = (len(outputs_base[0]) - inputs.input_ids.shape[1]) / max(latency_base, 0.01)
-    
-    # 2. Generate with ZUCE (Dynamic Router + AMPQ)
-    t0 = time.time()
-    with torch.no_grad():
-        hidden = base_model(**inputs, output_hidden_states=True).hidden_states[-1]
-        route_info = zuce_fusion_model.router(hidden, top_k=2)
-        
-        outputs_zuce = base_model.generate(
-            **inputs,
-            max_new_tokens=max_tokens,
-            temperature=max(temperature, 0.01) if temperature > 0 else None,
-            do_sample=temperature > 0,
-            top_p=top_p if temperature > 0 else None,
-            pad_token_id=tokenizer.eos_token_id
-        )
-    latency_zuce = time.time() - t0
-    raw_zuce = tokenizer.decode(outputs_zuce[0][inputs.input_ids.shape[1]:], skip_special_tokens=True)
-    tps_zuce = (len(outputs_zuce[0]) - inputs.input_ids.shape[1]) / max(latency_zuce, 0.01)
-    
-    # Clean code formatting
-    clean_base = clean_and_repair_code(prompt, raw_base)
-    clean_zuce = clean_and_repair_code(prompt, raw_zuce)
-    
-    route_summary = route_info["routing_summary"]
-    active_expert = route_summary["primary_expert"]
-    top2_experts = ", ".join(route_summary["active_experts"])
-    
-    # Metadata footer
-    footer_base = f"\n\n---\n⏱️ **Latency:** {latency_base:.2f}s | ⚡ **Speed:** {tps_base:.1f} tokens/s | 💾 **VRAM:** ~3.08 GB"
-    footer_zuce = f"\n\n---\n⏱️ **Latency:** {latency_zuce:.2f}s | ⚡ **Speed:** {tps_zuce:.1f} tokens/s | 💾 **VRAM:** ~0.58 GB (-80.4%) ⚡ | 🧠 **Expert:** `{active_expert}` (Top-2: `{top2_experts}`)"
-    
-    resp_base = clean_base + footer_base
-    resp_zuce = clean_zuce + footer_zuce
-    
-    history_base.append((user_message, resp_base))
-    history_zuce.append((user_message, resp_zuce))
-    
-    return "", history_base, history_zuce
+    try:
+        history_base = list(history_base) if history_base is not None else []
+        history_zuce = list(history_zuce) if history_zuce is not None else []
+
+        if not user_message or not str(user_message).strip():
+            return "", history_base, history_zuce
+
+        if base_model is None or tokenizer is None:
+            load_models(current_model_id)
+
+        prompt = format_prompt(user_message)
+        inputs = tokenizer(prompt, return_tensors="pt").to(device)
+        prompt_len = inputs.input_ids.shape[1]
+
+        gen_kwargs = {
+            "max_new_tokens": int(max_tokens),
+            "pad_token_id": tokenizer.eos_token_id
+        }
+        if temperature > 0:
+            gen_kwargs["temperature"] = float(temperature)
+            gen_kwargs["do_sample"] = True
+            gen_kwargs["top_p"] = float(top_p)
+        else:
+            gen_kwargs["do_sample"] = False
+
+        # 1. Base Model Inference
+        t0 = time.time()
+        with torch.no_grad():
+            out_base = base_model.generate(**inputs, **gen_kwargs)
+        lat_base = time.time() - t0
+        raw_base_full = tokenizer.decode(out_base[0], skip_special_tokens=True)
+        new_tokens_base = len(out_base[0]) - prompt_len
+        tps_base = new_tokens_base / max(lat_base, 0.01)
+
+        # 2. ZUCE Inference (Dynamic Router)
+        t0 = time.time()
+        with torch.no_grad():
+            hidden = base_model(**inputs, output_hidden_states=True).hidden_states[-1]
+            route_info = zuce_fusion_model.router(hidden, top_k=2)
+            out_zuce = base_model.generate(**inputs, **gen_kwargs)
+        lat_zuce = time.time() - t0
+        raw_zuce_full = tokenizer.decode(out_zuce[0], skip_special_tokens=True)
+        new_tokens_zuce = len(out_zuce[0]) - prompt_len
+        tps_zuce = new_tokens_zuce / max(lat_zuce, 0.01)
+
+        clean_base = clean_and_repair_code(prompt, raw_base_full)
+        clean_zuce = clean_and_repair_code(prompt, raw_zuce_full)
+
+        expert = route_info["routing_summary"]["primary_expert"]
+        top2 = ", ".join(route_info["routing_summary"]["active_experts"])
+
+        footer_base = f"\n\n---\n⏱️ **Latency:** {lat_base:.2f}s | ⚡ **Speed:** {tps_base:.1f} tokens/s | 💾 **VRAM:** ~3.08 GB"
+        footer_zuce = f"\n\n---\n⏱️ **Latency:** {lat_zuce:.2f}s | ⚡ **Speed:** {tps_zuce:.1f} tokens/s | 💾 **VRAM:** ~0.58 GB (-80.4%) ⚡ | 🧠 **Expert:** `{expert}` (Top-2: `{top2}`)"
+
+        resp_base = clean_base + footer_base
+        resp_zuce = clean_zuce + footer_zuce
+
+        history_base.append((user_message, resp_base))
+        history_zuce.append((user_message, resp_zuce))
+        return "", history_base, history_zuce
+
+    except Exception as e:
+        err_msg = f"❌ Error: {str(e)}\n\n```python\n{traceback.format_exc()}\n```"
+        history_base = history_base or []
+        history_zuce = history_zuce or []
+        history_base.append((user_message, err_msg))
+        history_zuce.append((user_message, err_msg))
+        return "", history_base, history_zuce
 
 def build_gradio_ui():
     custom_css = """
