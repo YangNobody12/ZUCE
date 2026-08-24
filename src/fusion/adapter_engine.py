@@ -34,6 +34,8 @@ class CapabilityAdapter(nn.Module):
         nn.init.zeros_(self.up_proj.weight)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if self.down_proj.weight.device != x.device or self.down_proj.weight.dtype != x.dtype:
+            self.to(device=x.device, dtype=x.dtype)
         h = F.silu(self.down_proj(x))
         return self.up_proj(h) * self.scaling
 
@@ -87,6 +89,14 @@ class ZUCEFusionModel(nn.Module):
             "language_thai_expert": CapabilityAdapter(hidden_dim, adapter_rank, name="thai_language"),
             "general_instruction_expert": CapabilityAdapter(hidden_dim, adapter_rank, name="general_instruct")
         })
+
+        # Auto-match device and dtype of the backbone model
+        try:
+            param = next(backbone_model.parameters())
+            self.router.to(device=param.device, dtype=param.dtype)
+            self.adapters.to(device=param.device, dtype=param.dtype)
+        except Exception:
+            pass
 
     def forward(
         self,

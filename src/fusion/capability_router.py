@@ -48,6 +48,10 @@ class DynamicCapabilityRouter(nn.Module):
         else:
             h_pooled = h_x
 
+        # Auto-align device & dtype with incoming tensor
+        if self.gate.weight.device != h_pooled.device or self.gate.weight.dtype != h_pooled.dtype:
+            self.gate = self.gate.to(device=h_pooled.device, dtype=h_pooled.dtype)
+
         logits = self.gate(h_pooled) # [batch_size, num_experts]
         probs = F.softmax(logits, dim=-1) # [batch_size, num_experts]
 
