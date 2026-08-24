@@ -135,7 +135,7 @@ def build_gradio_ui():
     .header-box { text-align: center; padding: 20px; background: linear-gradient(135deg, #1e1b4b, #0f172a); border-radius: 12px; color: white; margin-bottom: 20px; }
     """
     
-    with gr.Blocks(css=custom_css, theme=gr.themes.Soft(primary_hue="indigo")) as demo:
+    with gr.Blocks(css=custom_css) as demo:
         with gr.Column(elem_classes=["header-box"]):
             gr.Markdown("# ⚔️ ZUCE-AI Side-by-Side Arena: Base Model vs ZUCE")
             gr.Markdown("### Compare Standard Base LLM vs ZUCE-AMPQ (16/8/4/2/1-bit) & Dynamic Multi-Teacher Router")
@@ -163,10 +163,10 @@ def build_gradio_ui():
         with gr.Row():
             with gr.Column(scale=1):
                 gr.Markdown("### 🏛️ Base Model (Dense FP16/BF16)")
-                chatbot_base = gr.Chatbot(label="Base Model Output", height=450, type="tuples")
+                chatbot_base = gr.Chatbot(label="Base Model Output", height=450)
             with gr.Column(scale=1):
                 gr.Markdown("### 🚀 ZUCE v4.0 (AMPQ + Multi-Teacher Fusion)")
-                chatbot_zuce = gr.Chatbot(label="ZUCE Optimized Output", height=450, type="tuples")
+                chatbot_zuce = gr.Chatbot(label="ZUCE Optimized Output", height=450)
         
         with gr.Row():
             msg_input = gr.Textbox(
