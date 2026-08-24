@@ -149,10 +149,10 @@ def build_gradio_ui():
         with gr.Row():
             with gr.Column(scale=1):
                 gr.Markdown("### 🏛️ Base Model (Dense FP16/BF16)")
-                chatbot_base = gr.Chatbot(label="Base Model Output", height=450)
+                chatbot_base = gr.Chatbot(label="Base Model Output", height=450, type="tuples")
             with gr.Column(scale=1):
                 gr.Markdown("### 🚀 ZUCE v4.0 (AMPQ + Multi-Teacher Fusion)")
-                chatbot_zuce = gr.Chatbot(label="ZUCE Optimized Output", height=450)
+                chatbot_zuce = gr.Chatbot(label="ZUCE Optimized Output", height=450, type="tuples")
         
         with gr.Row():
             msg_input = gr.Textbox(
